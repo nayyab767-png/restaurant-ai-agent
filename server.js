@@ -25,6 +25,24 @@ app.use(bodyParser.json());
 const PORT = process.env.PORT || 3000;
 const ORDERS_FILE = path.join(__dirname, "orders.json");
 
+// Google Sheet ka Web App URL (Apps Script se deploy kiya hua)
+const GOOGLE_SHEET_URL =
+  "https://script.google.com/macros/s/AKfycbwk7BoFW6iqN2DxrLHIW4p2tX0hlbAFUA9nkNfno7_hH35TOaGnLo7titr79aOVxICoWA/exec";
+
+// Order ko Google Sheet mein bhejne wala function
+async function sendToGoogleSheet(order) {
+  try {
+    await fetch(GOOGLE_SHEET_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(order),
+    });
+    console.log("Order Google Sheet mein bhi save ho gaya");
+  } catch (err) {
+    console.error("Google Sheet mein save karte waqt error:", err.message);
+  }
+}
+
 // ---------------------------------------------
 // Sample Menu Database (isko apni asli menu se replace karo,
 // ya database/Google Sheet se connect kar sakte ho)
@@ -104,24 +122,20 @@ function handleCheckMenuItem(params, res) {
 function handlePlaceOrder(params, res) {
   const orderId = `ORD-${Date.now().toString().slice(-6)}`;
 
-  const total = params.items.reduce(
-    (sum, i) => sum + i.price * i.quantity,
-    0
-  );
-
+  // "items" ab ek text description hai, jaise "2x Butter Chicken, 1x Roti"
   const order = {
     orderId,
     items: params.items,
     orderType: params.orderType,
-    address: params.address || null,
+    address: params.address || "",
     paymentMode: params.paymentMode,
-    customerPhone: params.customerPhone || null,
-    total,
+    customerPhone: params.customerPhone || "",
+    total: params.total || "N/A",
     status: "received",
     createdAt: new Date().toISOString(),
   };
 
-  // Order ko file mein save karo (production mein isko real database se replace karo)
+  // Order ko local file mein save karo (backup ke liye)
   let orders = [];
   if (fs.existsSync(ORDERS_FILE)) {
     orders = JSON.parse(fs.readFileSync(ORDERS_FILE, "utf-8"));
@@ -129,12 +143,15 @@ function handlePlaceOrder(params, res) {
   orders.push(order);
   fs.writeFileSync(ORDERS_FILE, JSON.stringify(orders, null, 2));
 
+  // Order ko Google Sheet mein bhi bhej do
+  sendToGoogleSheet(order);
+
   console.log("New order placed:", order);
 
   const estimatedTime = params.orderType === "delivery" ? "30-40 minute" : "15-20 minute";
 
   return res.json({
-    result: `Order confirm ho gaya hai. Order number hai ${orderId}, total Rs. ${total}. Estimated time: ${estimatedTime}.`,
+    result: `Order confirm ho gaya hai. Order number hai ${orderId}. Estimated time: ${estimatedTime}.`,
   });
 }
 
